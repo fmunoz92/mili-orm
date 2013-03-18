@@ -4,10 +4,11 @@ ORM minimalista, permite tener un manipulación completa de una base de datos my
 con muy pocas lineas de código con solo incluir un archivo.
 
 Reglas:
-- Cada tabla debe tener un campo autoincrementado id
-- Un modelo por cada tabla
+- Cada tabla debe tener un campo autoincrementado id.
+- Un modelo por cada tabla.
 - Cada modelo se representa con una clase que hereda de Model y debe definir 
-  las variables estáticas 
+  las variables estáticas:
+
 ```php
     static $model_table_name = ""; //nombre de la tabla
     static $model_fields = array('id');//campos, siempre deben tener un campo integer id como clave
