@@ -42,32 +42,28 @@ class Config
 
 final class SPDO extends PDO
 {
-  static private $instance;
+    static private $instance;
 
-  public function __construct()
-  {
-    try
+    public function __construct()
     {
-      $config = Config::singleton();
-      parent::__construct("mysql:host={$config->get('dbhost')}; dbname={$config->get('dbname')}",
-                          $config->get('dbuser'),
-                          $config->get('dbpass'));
-      $this->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-
+      try
+      {
+          $config = Config::singleton();
+          parent::__construct("mysql:host={$config->get('dbhost')}; dbname={$config->get('dbname')}",
+                              $config->get('dbuser'),
+                              $config->get('dbpass'));
+          $this->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+      }
+      catch (PDOException $e)
+      {
+          echo 'Connection failed: ' . $e->getMessage();
+      }
     }
-    catch (PDOException $e)
-    {
-      echo 'Connection failed: ' . $e->getMessage();
-    }
-  }
 
     static public function getInstance()
     {
-    if (!isset(self::$instance))
-    {
-      self::$instance = new SPDO();
-        }
-
+        if (!isset(self::$instance))
+          self::$instance = new SPDO();
         return self::$instance;
     }
 }
@@ -256,7 +252,7 @@ class AdvancedQuery extends Query
     /*
      *
      * Retorna un arreglo asociativo "Campo" => "Valor"
-     * no retorna objetos ya que estas consultas pueden tener joins, proyecciones etc.
+     * no retorna objetos-modelos ya que estas consultas pueden tener joins, proyecciones etc.
      */
     public function run()
     {
@@ -286,26 +282,25 @@ class AdvancedQuery extends Query
  */
 class SetAndGet
 {
-    private $values;//solo accesibles a traves de set y get
-    protected $fields;
+    private $values;//array para acceder directamente a cada var
+    public $model_fields;
 
-    protected function __construct(&$fields)
+    protected function __construct()
     {
         $this->values = array();
-        $this->fields = &$fields;
 
-        foreach ($fields as $field)
-            $this->values[$field] = "";
+        foreach ($this->model_fields as $field)
+            $this->values[$field->getName()] = $field;
     }
 
     public function set($field, $value)
     {
-        $this->values[$field] = $value;
+        $this->values[$field]->setValue($value);
     }
 
     public function get($field)
     {
-        return $this->values[$field];
+        return $this->values[$field]->getValue();
     }
 }
 
@@ -317,7 +312,7 @@ class SetAndGet
  */
 abstract class ModelBase extends SetAndGet
 {
-    protected $table_name;
+    public $model_table_name;
 
     protected $changed;
     protected $unsaved;
@@ -326,10 +321,10 @@ abstract class ModelBase extends SetAndGet
     {
         $this->unsaved = false;
     }
-    protected function __construct($table_name, $fields = array())
+
+    protected function __construct()
     {
-        parent::__construct($fields);
-        $this->table_name = $table_name;
+        parent::__construct();
         $this->unsaved = true;
         $this->chaged  = false;
     }
@@ -400,6 +395,56 @@ abstract class Exec
     public function lastInsertId()
     {
         return $this->db->lastInsertId();
+    }
+}
+
+class CreateTable extends Exec
+{
+    private $fields;
+    private $engine;
+    private $table_name;
+
+    public static function create()
+    {
+        return new CreateTable();
+    }  
+
+    public function table($table_name)
+    {
+        $this->table_name = "CREATE TABLE IF NOT EXISTS ". $table_name;
+
+        return $this;
+    }
+    
+    public function engine($engine)
+    {
+        $this->engine = $engine;
+        return $this;
+    }
+    
+    public function field($name, $type)
+    {
+        if (!$this->fields)
+            $this->fields =  " ( " . $name . " " . $type;
+        else
+            $this->fields .= ", " . $name . " " . $type;
+        return $this;
+    }
+    
+    public function fields($fields)
+    {
+        foreach ($fields as $field)
+            $this->field($field->getName(), $field->getType());
+        return $this;
+    }
+
+    public function getSQL()
+    {
+        $engine = ($this->engine) ? $this->engine : "InnoDB";
+
+        $sql = $this->table_name . " " . $this->fields . ") ENGINE = ".$engine.";";
+
+        return $sql;
     }
 }
 
@@ -494,22 +539,22 @@ class Delete extends Exec
 class Model extends ModelBase
 {
     protected $db;
-    protected function __construct($table_name, $fields = array())
+    protected function __construct()
     {
-        parent::__construct($table_name, $fields);
+        parent::__construct();
         $this->db = SPDO::getInstance();
     }
 
     protected function insert()
     {
 
-        $insert = Insert::create()->table($this->table_name);
+        $insert = Insert::create()->table($this->model_table_name);
 
-        foreach ($this->fields as $field)
+        foreach ($this->model_fields as $field)
         {
-            $field_value = $this->get($field);
+            $field_value = $this->get($field->getName());
             if(!empty($field_value))
-                $insert->field($field, $field_value);
+                $insert->field($field->getName(), $field_value);
         }
 
         $insert->run();
@@ -518,7 +563,7 @@ class Model extends ModelBase
 
     protected function delete()
     {
-        $delete = Delete::create()->table($this->table_name);
+        $delete = Delete::create()->table($this->model_table_name);
         $delete->where("id", $this->get("id"))->run();
     }
 
@@ -527,10 +572,10 @@ class Model extends ModelBase
     */
     protected function update()
     {
-        $sql = "UPDATE {$this->table_name} SET ";
+        $sql = "UPDATE {$this->model_table_name} SET ";
 
         foreach ($this->fields as $field)
-            $sql .= $field . " = ?, ";
+            $sql .= $field->getName() . " = ?, ";
 
         $sql = substr($sql, 0, (-2));
 
@@ -539,8 +584,8 @@ class Model extends ModelBase
         $q = $this->db->prepare($sql);
         $values = array();
 
-        foreach ($this->fields as $field)
-            array_push($values, $this->get($field));
+        foreach ($this->model_fields as $field)
+            array_push($values, $this->get($field->getName()));
 
         $q->execute($values);
     }
@@ -568,7 +613,7 @@ class ModelQuery extends Query
         $this->from($table_name);
 
         foreach ($fields as $field)
-            $this->select($field);
+            $this->select($field->getName());
     }
 
     private function creator($sth, &$object)
@@ -580,7 +625,7 @@ class ModelQuery extends Query
             $object = new $this->class_name(false);
 
             foreach ($this->fields as $field)
-                $object->set($field, $row[$field]);
+                $object->set($field->getName(), $row[$field->getName()]);
 
             $object->saved();
             $result = true;
@@ -614,6 +659,143 @@ class ModelQuery extends Query
         return $ar[0];
     }
 }
+
+abstract class TypeField
+{
+    protected $type;
+
+    function getType()
+    {
+       return $this->type;
+    }
+}
+
+abstract class Field extends TypeField
+{
+    protected $name;
+    protected $value;
+
+    function getName()
+    {
+        return $this->name;
+    }
+
+    function getValue()
+    {
+        return $this->value;
+    }
+
+    function setValue($value)
+    {
+        $this->value = $value;
+    }
+}
+
+class IdField extends Field
+{
+    function __construct()
+    {
+        $this->name = "id";
+        $this->type = "INT NOT NULL AUTO_INCREMENT PRIMARY KEY";
+    }
+}
+
+class ForeignKeyField extends Field
+{
+    private $obj;
+    function __construct($name, $model = null, $notNull = false)
+    {
+        $this->name = $name;
+        $this->model = $model;
+        $this->notNull = $notNull;
+        $this->type = "INT UNIQUE";
+        $this->type .= ($notNull)? " NOT NULL" : "";
+        $this->obj = null;
+    }
+
+    function getValue()
+    {
+        if($this->obj == null)
+            $this->obj = $model::$objects->find("id", parent::getValue());
+        return $this->obj;
+    }
+
+    function setValue($value)
+    {
+        parent::setValue($value);
+        $this->obj = null;
+    }
+}
+
+class CharField extends Field
+{
+    function __construct($name, $length = 100, $notNull = false, $unique = false)
+    {
+        $this->name = $name;
+        $this->length = $length;
+        $this->notNull = $notNull;
+        $this->unique = $unique;
+        $this->type = "VARCHAR(".$this->length.")" ;
+        $this->type .= ($this->notNull)? " NOT NULL" : "";
+        $this->type .= ($this->unique)? " UNIQUE" : "";
+    }
+}
+
+class IntField extends Field
+{
+    function __construct($name, $length = 100, $notNull = false, $unique = false)
+    {
+        $this->name = $name;
+        $this->length = $length;
+        $this->notNull = $notNull;
+        $this->unique = $unique;
+        $this->type = "int(".$this->length.")" ;
+        $this->type .= ($this->notNull)? " NOT NULL" : "";
+        $this->type .= ($this->unique)? " UNIQUE" : "";
+    }
+}
+
+class DateField extends CharField
+{
+    function __construct($name, $length = 100, $notNull = false, $unique = false)
+    {
+        parent::__construct($name, $length, $notNull, $unique);
+
+    }
+
+};
+
+class URLField extends CharField
+{
+    function __construct($name, $length = 100, $notNull = false, $unique = false)
+    {
+        parent::__construct($name, $length, $notNull, $unique);
+
+    }
+
+};
+class BooleanField extends IntField
+{
+    function __construct($name, $length = 1, $notNull = false, $unique = false)
+    {
+        parent::__construct($name, $length, $notNull, $unique);
+    }
+
+    function getValue()
+    {
+        if(parent::getValue() == 0)
+            return false;
+        else
+            return true;
+    }
+
+    function setValue($value)
+    {
+        $valInt = ($value)? 1 : 0;
+        parent::setValue($valInt);
+    }
+};
+
 
 /*
  *
@@ -656,6 +838,11 @@ class Objects
     {
         return new ModelQuery($this->class_name, $this->fields, $this->table_name);
     }
+   
+    public function getSQLModel()
+    {
+        return CreateTable::create()->table($this->table_name)->fields($this->fields)->getSQL();
+    }
 }
 
 /*
@@ -665,7 +852,8 @@ class Objects
  */
 function REGISTER_MODEL($model)
 {
-    $model::$objects = new Objects($model, $model::$model_fields, $model::$model_table_name);
+    $tmb = new $model();
+    $model::$objects = new Objects($model, $tmb->model_fields, $tmb->model_table_name);
 }
 
 ?>
