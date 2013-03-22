@@ -39,7 +39,6 @@ class Config
     }
 }
 
-
 final class SPDO extends PDO
 {
     static private $instance;
@@ -494,7 +493,67 @@ class Insert extends Exec
     }
 }
 
+/**
+*
+*/
+class Update extends Exec
+{
+    private $update = null;
+    private $fields = null;
+    private $where = null;
 
+    public static function create()
+    {
+        return new Update();
+    }
+
+    public function table($table)
+    {
+        $this->update = "UPDATE {$table} SET ";
+
+        return $this;
+    }
+
+    public function field($field, $value='')
+    {
+        if (!$this->fields)
+            $this->fields = "(";
+        else
+            $this->fields .= ", ";
+
+        $this->fields .= $field . " = " . $value;
+
+        return $this;
+    }
+
+    public function fields($fields)
+    {
+        foreach ($fields as $field)
+            $this->field($field);
+
+        return $this;
+    }
+
+    public function where($field = "id", $value, $operator = "=")
+    {
+        if(!$this->where)
+            $this->where = "WHERE";
+
+        $this->where .= "{$field} {$operator} '{$value}' ";
+
+        return $this;
+    }
+
+    public function id($id)
+    {
+        return $this->where("id", $id, "=");
+    }
+
+    public function getSQL()
+    {
+        return $this->update . $this->fields . ") " . $this->where . ";";
+    }
+}
 
 class Delete extends Exec
 {
@@ -523,18 +582,21 @@ class Delete extends Exec
         return $this;
     }
 
+    public function id($id)
+    {
+        return $this->where("id", $id, "=");
+    }
+
     public function getSQL()
     {
         return $this->delete . $this->where . ";";
     }
 }
 
-
 /**
 *
 * Tener instancia de la coneccion a la base de datos,
 * generar y ejecutar las inserciones, actualizaciones y borrados del modelo
-* TODO: quitar responsabilidad de generar, hacer una clase similar a query para insercion, borrado y actualizacion
 */
 class Model extends ModelBase
 {
@@ -547,7 +609,6 @@ class Model extends ModelBase
 
     protected function insert()
     {
-
         $insert = Insert::create()->table($this->model_table_name);
 
         foreach ($this->model_fields as $field)
@@ -563,31 +624,12 @@ class Model extends ModelBase
 
     protected function delete()
     {
-        $delete = Delete::create()->table($this->model_table_name);
-        $delete->where("id", $this->get("id"))->run();
+        Delete::create()->table($this->model_table_name)->id($this->get("id"))->run();
     }
 
-    /**
-        TODO: HACER CLASE UPDATE
-    */
     protected function update()
     {
-        $sql = "UPDATE {$this->model_table_name} SET ";
-
-        foreach ($this->fields as $field)
-            $sql .= $field->getName() . " = ?, ";
-
-        $sql = substr($sql, 0, (-2));
-
-        $sql .= " WHERE id = {$this->get('id')};";
-
-        $q = $this->db->prepare($sql);
-        $values = array();
-
-        foreach ($this->model_fields as $field)
-            array_push($values, $this->get($field->getName()));
-
-        $q->execute($values);
+        Update::create()->table($this->model_table_name)->fields($this->fields)->id($this->get("id"))->run();
     }
 }
 
@@ -760,9 +802,7 @@ class DateField extends CharField
     function __construct($name, $length = 100, $notNull = false, $unique = false)
     {
         parent::__construct($name, $length, $notNull, $unique);
-
     }
-
 };
 
 class URLField extends CharField
@@ -770,10 +810,9 @@ class URLField extends CharField
     function __construct($name, $length = 100, $notNull = false, $unique = false)
     {
         parent::__construct($name, $length, $notNull, $unique);
-
     }
-
 };
+
 class BooleanField extends IntField
 {
     function __construct($name, $length = 1, $notNull = false, $unique = false)
@@ -795,7 +834,6 @@ class BooleanField extends IntField
         parent::setValue($valInt);
     }
 };
-
 
 /*
  *
@@ -852,8 +890,8 @@ class Objects
  */
 function REGISTER_MODEL($model)
 {
-    $tmb = new $model();
-    $model::$objects = new Objects($model, $tmb->model_fields, $tmb->model_table_name);
+    $tmp = new $model();
+    $model::$objects = new Objects($model, $tmp->model_fields, $tmp->model_table_name);
 }
 
 ?>
