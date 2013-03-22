@@ -6,7 +6,7 @@ con muy pocas lineas de código con solo incluir un archivo.
 Reglas:
 - Cada tabla debe tener un campo autoincrementado id.
 - Un modelo por cada tabla.
-- Cada modelo se representa con una clase que hereda de Model y debe definir 
+- Cada modelo se representa con una clase que hereda de Model y debe definir
   las variables estáticas:
 
 ```php
@@ -15,7 +15,7 @@ Reglas:
     static $objects;//RegisterModel la inicializara, solo declararla.
 ```
 
-Plantilla de uso:
+Plantilla y ejemplo de uso:
 ```php
 
 require 'Model.php';
@@ -28,16 +28,19 @@ $config->set('dbpass', '');
 
 
 class ModelName extends Model
-{   
-    //Atributos obligatorios:
-    static $model_table_name = "";
-    static $model_fields = array('id');
+{
     static $objects;
-
-    function __construct() 
+    function __construct()
     {
-        parent::__construct(self::$model_table_name, self::$model_fields);
+        $this->model_table_name = "tableName";
+        $this->model_fields     = array(new IdField(),
+                                        new BooleanField('bool'),
+                                        new IntField('x'),
+                                        new URLField('url'),
+                                        new CharField('text'),
+                                        new ForeignKeyField('otherModel', 'OtherModel'));
+        parent::__construct();
     }
-}
+};
 REGISTER_MODEL("ModelName");
 ```
