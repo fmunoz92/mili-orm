@@ -7,11 +7,11 @@ Reglas:
 - Cada tabla debe tener un campo autoincrementado id.
 - Un modelo por cada tabla.
 - Cada modelo se representa con una clase que hereda de Model y debe definir
-  las variables estáticas:
+  las variables:
 
 ```php
-    static $model_table_name = ""; //nombre de la tabla
-    static $model_fields = array('id');//campos, siempre deben tener un campo integer id como clave
+    $this->model_table_name = ""; //nombre de la tabla
+    $this->model_fields = array('id');//campos, siempre deben tener un campo integer id como clave
     static $objects;//RegisterModel la inicializara, solo declararla.
 ```
 
