@@ -44,3 +44,19 @@ class ModelName extends Model
 };
 REGISTER_MODEL("ModelName");
 ```
+
+Manejo de formularios
+
+Para alta:
+```php
+$model = new ModelX();
+$form = new FormModel($model);
+$form ->render();
+```
+
+Para modificación:
+```php
+$model = ModelX::$objects->find("id", 4);
+$form = new FormModel($model);
+$form ->render();
+```

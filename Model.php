@@ -607,6 +607,11 @@ class Model extends ModelBase
         $this->db = SPDO::getInstance();
     }
 
+    function __toString()
+    {
+        return (string)$this->get("id");
+    }
+
     protected function insert()
     {
         $insert = Insert::create()->table($this->model_table_name);
@@ -679,7 +684,7 @@ class ModelQuery extends Query
     public function run()
     {
         $query = $this->getQuery();
-        $query;
+        //echo $query;
         $sth = $this->db->query($query);
         $sth->setFetchMode(PDO::FETCH_ASSOC);
 
@@ -714,6 +719,7 @@ abstract class TypeField
 
 abstract class Field extends TypeField
 {
+    protected $label;
     protected $name;
     protected $value;
 
@@ -730,6 +736,15 @@ abstract class Field extends TypeField
     function setValue($value)
     {
         $this->value = $value;
+    }
+    function getLabel()
+    {
+        return (isset($this->label)) ? $this->label : $this->name;
+    }
+
+    function setLabel($label)
+    {
+        $this->label = $label;
     }
 }
 
@@ -757,14 +772,17 @@ class ForeignKeyField extends Field
 
     function getValue()
     {
-        if($this->obj == null)
-            $this->obj = $model::$objects->find("id", parent::getValue());
+        if($this->obj == null)//TODO: hacer esto solo en modo "cache"
+        {
+            $MODEL = $this->model;
+            $this->obj = $MODEL::$objects->find("id", parent::getValue());
+        }
         return $this->obj;
     }
 
     function setValue($value)
     {
-        parent::setValue($value);
+        parent::setValue($value->get("id"));
         $this->obj = null;
     }
 }
@@ -780,6 +798,14 @@ class CharField extends Field
         $this->type = "VARCHAR(".$this->length.")" ;
         $this->type .= ($this->notNull)? " NOT NULL" : "";
         $this->type .= ($this->unique)? " UNIQUE" : "";
+    }
+}
+
+class TextField extends CharField
+{
+    function __construct($name, $length = 300, $notNull = false, $unique = false)
+    {
+        parent::__construct($name, $length, $notNull, $unique);
     }
 }
 
@@ -813,10 +839,29 @@ class URLField extends CharField
     }
 };
 
+//TODO: redefinir setValue y getValue para que guarden el archivo en X directorio(pedir parametro en el constructor)
+// y guarden en el modelo la url
+class FileField extends CharField
+{
+    function __construct($name, $length = 100, $notNull = false, $unique = false)
+    {
+        parent::__construct($name, $length, $notNull, $unique);
+    }
+};
+
+class ImageField extends FileField
+{
+    function __construct($name, $length = 100, $notNull = false, $unique = false)
+    {
+        parent::__construct($name, $length, $notNull, $unique);
+    }
+};
+
 class BooleanField extends IntField
 {
-    function __construct($name, $length = 1, $notNull = false, $unique = false)
+    function __construct($name, $notNull = false, $unique = false)
     {
+        $length = 1;
         parent::__construct($name, $length, $notNull, $unique);
     }
 
@@ -880,6 +925,10 @@ class Objects
     public function getSQLModel()
     {
         return CreateTable::create()->table($this->table_name)->fields($this->fields)->getSQL();
+    }
+    public function createTable()
+    {
+      CreateTable::create()->table($this->table_name)->fields($this->fields)->run();
     }
 }
 
